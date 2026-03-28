@@ -13,9 +13,9 @@ from object_detection import process_yolo_video_with_teams
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}}, supports_credentials=True)
 
-# Database Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql+pymysql://root@localhost/football_cv'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Disable track modifications to avoid overhead
+# Database Configuration (Using SQLite for local development)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///football_cv.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize the database
 db = SQLAlchemy(app)
@@ -32,6 +32,14 @@ os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def check_ffmpeg():
+    """Check if ffmpeg is installed and accessible."""
+    try:
+        subprocess.run(['ffmpeg', '-version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except FileNotFoundError:
+        return False
 
 # User model
 class User(db.Model):
@@ -184,7 +192,12 @@ def process_video():
 
     # Process the video
     try:
+        # Check if ffmpeg is available
+        if not check_ffmpeg():
+            return jsonify({'error': 'ffmpeg is not installed on this system. Video conversion will fail.'}), 500
+
         # Process the video with YOLO or any other processing you need
+        print(f"Processing video: {video_path}")
         process_yolo_video_with_teams(
             model_path='models/object.pt',  # Update with actual model path
             video_path=video_path,
@@ -204,17 +217,25 @@ def process_video():
             '-preset', 'fast', '-movflags', '+faststart',  # Optimize for web playback
             converted_output_path
         ]
+        
+        print(f"Converting video with ffmpeg: {output_path} -> {converted_output_path}")
         subprocess.run(ffmpeg_command, check=True)
 
         # Delete the processed video after conversion
-        os.remove(output_path)  # Optionally, delete the processed video after conversion
+        if os.path.exists(output_path):
+            os.remove(output_path)  # Optionally, delete the processed video after conversion
 
         # Save the converted (correct) video path in the database
         processed_video = ProcessedVideos(user_id=user_id, video_path=converted_output_path)
         db.session.add(processed_video)
         db.session.commit()
+        print(f"Video processed and saved to database: {converted_output_path}")
 
+    except subprocess.CalledProcessError as e:
+        print(f"FFmpeg conversion error: {str(e)}")
+        return jsonify({'error': f'FFmpeg conversion (conversion to MP4) failed: {str(e)}'}), 500
     except Exception as e:
+        print(f"Error during video processing: {str(e)}")
         return jsonify({'error': f'Error processing video: {str(e)}'}), 500
 
     # Return the path to the converted output video

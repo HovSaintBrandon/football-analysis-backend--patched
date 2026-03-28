@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "start": "python3 app.py"
+  },
   "dependencies": {
     "jwt-decode": "^4.0.0"
   }

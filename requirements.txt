@@ -3,11 +3,16 @@ ultralytics>=8.3.0
 opencv-python
 filterpy
 numpy
+supervision
+torch
+torchvision
 
 # Web Server and API
 flask
+flask-sqlalchemy
 flask-cors
 python-dotenv
+pymysql
 
 # Data Analysis
 pandas
